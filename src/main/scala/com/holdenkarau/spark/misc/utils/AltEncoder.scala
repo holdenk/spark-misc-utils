@@ -14,8 +14,12 @@ import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.types._
 
 object AltEncoder {
+  val chunkSize = 10240
+
   def COMPRESSED_BINARY: Encoder[Array[Byte]] = {
     case class CompressedArrayEncoder(child: Expression) extends UnaryExpression with NonSQLExpression {
+      override def prettyName = "compressedArrayEncoder"
+
       override def nullSafeEval(input: Any): Any = {
         if (input == null) {
           return null
@@ -29,7 +33,7 @@ object AltEncoder {
         outputStream.toByteArray()
       }
 
-      override protected def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
+      override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
         // Code to serialize.
         val input = child.genCode(ctx)
         val javaType = CodeGenerator.javaType(dataType)
@@ -38,18 +42,23 @@ object AltEncoder {
         val compressed = ctx.freshName("compressed")
 
         val code = input.code + code"""
-        import java.util.zip.GZIPOutputStream;
-        import java.io.ByteArrayOutputStream;
-        ByteArrayOutputStream $outputStream = new ByteArrayOutputStream();
-        GZIPOutputStream $compressed = new GZIPOutputStream(outputStream);
+        java.io.ByteArrayOutputStream $outputStream;
+        java.util.zip.GZIPOutputStream $compressed;
+
+        try {
+        $outputStream = new java.io.ByteArrayOutputStream();
+        $compressed = new java.util.zip.GZIPOutputStream($outputStream);
         if (! ${input.isNull} ) {
-          ${compressed}.write(${input.value});
+          ${compressed}.write((byte[]) ${input.value});
           ${compressed}.finish();
           ${compressed}.flush();
           ${compressed}.close();
         }
+        } catch (Exception e) {
+           throw new RuntimeException("sad" + e);
+        }
         final $javaType ${ev.value} =
-          ${input.isNull} ? ${CodeGenerator.defaultValue(dataType)} : compressed.toByteArray();
+          ${input.isNull} ? ${CodeGenerator.defaultValue(dataType)} : ${outputStream}.toByteArray();
      """
         ev.copy(code = code, isNull = input.isNull)
       }
@@ -57,11 +66,13 @@ object AltEncoder {
       override def dataType: DataType = BinaryType
     }
 
-    case class CompressedArrayDecoder(child: Expression) extends UnaryExpression with NonSQLExpression {
+    case class CompressedArrayDecoder(child: Expression) extends UnaryExpression with NonSQLExpression  {
+      override def prettyName = "compressedArrayDecoder"
+
       override def nullSafeEval(input: Any): Any = {
         val inputBytes = input.asInstanceOf[Array[Byte]]
         val inStream = new GZIPInputStream(new ByteArrayInputStream(inputBytes))
-        val buffer = new Array[Byte](1024)
+        val buffer = new Array[Byte](chunkSize)
         val out = new ByteArrayOutputStream()
 
         var len = 0
@@ -73,42 +84,48 @@ object AltEncoder {
 
         inStream.close()
         out.close()
-        out.toByteArray();
+        out.toByteArray()
       }
 
-      override protected def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
+      override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
         // Code to serialize.
         val input = child.genCode(ctx)
         val javaType = CodeGenerator.javaType(dataType)
 
-        val outputStream = ctx.freshName("outputStream")
+        val outputStream = ctx.freshName("outStream")
+        val inputStream = ctx.freshName("outStream")
         val compressed = ctx.freshName("compressed")
 
         val code = input.code + code"""
-        import java.util.zip.GZIPInputStream;
-        import java.io.ByteArrayOutputStream;
-        ByteArrayOutputStream $outputStream = new ByteArrayOutputStream();
-        GZIPOutputStream $compressed = new GZIPOutputStream(${input.value});
+        java.io.ByteArrayInputStream $inputStream;
+        java.io.ByteArrayOutputStream $outputStream;
+        java.util.zip.GZIPInputStream $compressed;
 
+        try {
+        $outputStream = new java.io.ByteArrayOutputStream();
+        $inputStream = new java.io.ByteArrayInputStream((byte[]) ${input.value});
+        $compressed = new java.util.zip.GZIPInputStream($inputStream);
         if (!${input.isNull}) {
-          byte[] buffer = new byte[1024];
+          byte[] buffer = new byte[${chunkSize}];
 
           int len;
-          while ((len = gzipper.read(buffer)) > 0) {
-            out.write(buffer, 0, len);
+          while ((len = ${compressed}.read(buffer)) > 0) {
+            ${outputStream}.write(buffer, 0, len);
           }
 
-          gzipper.close();
-          out.close();
+          ${compressed}.close();
+          ${outputStream}.close();
         }
-
+        } catch (Exception e) {
+           throw new RuntimeException("sad" + e);
+        }
         final $javaType ${ev.value} =
           ${input.isNull} ? ${CodeGenerator.defaultValue(dataType)} : ${outputStream}.toByteArray();
      """
         ev.copy(code = code, isNull = input.isNull)
       }
 
-      override def dataType: DataType = BinaryType
+      override def dataType: DataType = ObjectType(classOf[Array[Byte]])
     }
 
     new ExpressionEncoder[Array[Byte]](
