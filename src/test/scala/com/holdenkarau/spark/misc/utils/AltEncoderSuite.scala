@@ -2,7 +2,7 @@ package com.holdenkarau.spark.misc.utils
 
 import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
-import org.scalacheck.{Gen, Arbitrary}
+import org.scalacheck.Arbitrary
 import org.scalacheck.Prop.forAll
 import org.scalatest.FunSuite
 import org.scalatest.prop.Checkers
