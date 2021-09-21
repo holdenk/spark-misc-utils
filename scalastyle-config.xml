@@ -30,7 +30,7 @@
  <check level="warning" class="org.scalastyle.scalariform.SpacesBeforePlusChecker" enabled="true"></check>
  <check level="warning" class="org.scalastyle.file.FileLineLengthChecker" enabled="true">
   <parameters>
-   <parameter name="maxLineLength"><![CDATA[85]]></parameter>
+   <parameter name="maxLineLength"><![CDATA[100]]></parameter>
    <parameter name="tabSize"><![CDATA[4]]></parameter>
   </parameters>
  </check>
@@ -99,11 +99,6 @@
  <check level="warning" class="org.scalastyle.scalariform.MethodLengthChecker" enabled="true">
   <parameters>
    <parameter name="maxLength"><![CDATA[50]]></parameter>
-  </parameters>
- </check>
- <check level="warning" class="org.scalastyle.scalariform.MethodNamesChecker" enabled="true">
-  <parameters>
-   <parameter name="regex"><![CDATA[^[a-z][A-Za-z0-9]*$]]></parameter>
   </parameters>
  </check>
  <check level="warning" class="org.scalastyle.scalariform.NumberOfMethodsInTypeChecker" enabled="true">
