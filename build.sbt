@@ -5,6 +5,7 @@ lazy val core = (project in file("."))
   .settings(
     name := "spark-misc-utils",
     commonSettings,
+    coreSources,
     publishSettings,
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-core"        % sparkVersion.value,
@@ -23,6 +24,19 @@ lazy val core = (project in file("."))
       }
     }
   )
+
+val coreSources = unmanagedSourceDirectories in Compile  := {
+  if (sparkVersion.value < "3.0.0") Seq(
+    (sourceDirectory in Compile)(_ / "/scala"),
+    (sourceDirectory in Compile)(_ / "2.4/scala"),
+  ).join.value
+  else
+    Seq(
+      (sourceDirectory in Compile)(_ / "/scala"),
+      (sourceDirectory in Compile)(_ / "3.0/scala")
+    ).join.value
+}
+
 
 val commonSettings = Seq(
   organization := "com.holdenkarau",
