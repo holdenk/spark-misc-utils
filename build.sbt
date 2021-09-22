@@ -6,7 +6,6 @@ lazy val core = (project in file("."))
     name := "spark-misc-utils",
     commonSettings,
     publishSettings,
-    addCompilerPlugin(scalafixSemanticdb),
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-core"        % sparkVersion.value,
       "org.apache.spark" %% "spark-streaming"   % sparkVersion.value,
@@ -15,10 +14,15 @@ lazy val core = (project in file("."))
       "org.apache.spark" %% "spark-catalyst"    % sparkVersion.value,
       "org.apache.spark" %% "spark-yarn"        % sparkVersion.value,
       "org.apache.spark" %% "spark-mllib"       % sparkVersion.value,
-      "com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_1.0.0" % "test"
-    )
+    ),
+    libraryDependencies ++= {
+      if (scalaVersion.value > "2.12.0") {
+        Seq("com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_1.1.0" % "test")
+      } else {
+        Seq()
+      }
+    }
   )
-
 
 val commonSettings = Seq(
   organization := "com.holdenkarau",
@@ -35,6 +39,9 @@ val commonSettings = Seq(
     } else {
       Seq("2.12.12", "2.11.11")
     }
+  },
+  skip in test := {
+    scalaVersion.value < "2.12.0"
   },
   scalacOptions ++= Seq("-deprecation", "-unchecked", "-Yrangepos", "-Ywarn-unused-import"),
   javacOptions ++= {
@@ -93,6 +100,7 @@ lazy val publishSettings = Seq(
     artifact.name + "-" + sparkVersion.value +  module.revision + "." + artifact.extension
   }
 )
+
 
 lazy val noPublishSettings =
   skip in publish := true
