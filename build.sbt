@@ -15,6 +15,8 @@ lazy val core = (project in file("."))
       "org.apache.spark" %% "spark-catalyst"    % sparkVersion.value,
       "org.apache.spark" %% "spark-yarn"        % sparkVersion.value,
       "org.apache.spark" %% "spark-mllib"       % sparkVersion.value,
+      "org.apache.iceberg" % "iceberg-api" % "0.12.0",
+      "org.apache.iceberg" % "iceberg-hive-metastore" % "0.12.0"
     ),
     libraryDependencies ++= {
       if (scalaVersion.value > "2.12.0") {
