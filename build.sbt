@@ -24,6 +24,29 @@ lazy val core = (project in file("."))
       } else {
         Seq()
       }
+    },
+    libraryDependencies ++= {
+      if (sparkVersion.value > "3.0.0") {
+        Seq("org.apache.iceberg" % "iceberg-spark3-runtime" % "0.12.0")
+      } else {
+        Seq()
+      }
+    },
+    // Pin back Jackson for Spark
+    dependencyOverrides ++= {
+      if (sparkVersion.value < "3.0.0") {
+        Seq(
+          "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.6.7.1",
+          "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7",
+          "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
+        )
+      } else {
+        Seq(
+          "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
+          "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
+          "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5"
+        )
+      }
     }
   )
 
@@ -44,7 +67,7 @@ val commonSettings = Seq(
   organization := "com.holdenkarau",
   publishMavenStyle := true,
   sparkUtilsVersion := "0.0.1",
-  sparkVersion := System.getProperty("sparkVersion", "2.4.0"),
+  sparkVersion := System.getProperty("sparkVersion", "2.4.4"),
   version := sparkVersion.value + "_" + sparkUtilsVersion.value,
   scalaVersion := {
     "2.12.12"
