@@ -21,15 +21,21 @@ import org.apache.spark.sql._
  * Class so we can test our functions
  */
 class IcebergTableCleaner(spark: SparkSession) {
+  val sc = spark.sparkContext
+
   val catalog = {
-    val conf = spark.sparkContext.hadoopConfiguration
+    val conf = sc.hadoopConfiguration
     val catalog = new HiveCatalog()
     catalog.setConf(conf)
     catalog
   }
-  def resolveFiles(tableName: String): Seq[DataFile] = {
+
+  private def tableForName(tableName: String): Table = {
     val name = TableIdentifier.parse(tableName)
-    val table = catalog.loadTable(name)
+    catalog.loadTable(name)
+  }
+
+  def resolveFiles(table: Table): Seq[DataFile] = {
     table.newScan.planFiles.asScala.map(_.file()).toSeq
   }
 
@@ -84,22 +90,21 @@ class IcebergTableCleaner(spark: SparkSession) {
         }
       } catch {
         case e: Exception =>
-          Some((file, f"Exception loading data ${e}"))
+          Some((file, f"Exception ${e} loading datafile"))
       }
     }
   }
 
 
-  def selectFilesForRemoval(tableName: String): Seq[(DataFile, String)] = {
-    val sc = spark.sparkContext
-    var candidates = resolveFiles(tableName).toSet
+  def selectFilesForRemoval(table: Table): Seq[(DataFile, String)] = {
+    var candidates = resolveFiles(table).toSet
     var filesRDD = sc.parallelize(candidates.toSeq)
     val hadoopConf = sc.hadoopConfiguration
     val bcastConf = sc.broadcast(hadoopConf)
     val toRemove = ArrayBuilder.make[(DataFile, String)]
     toRemove ++= (filesRDD.flatMap { f => validate(bcastConf, f) }.collect())
     // Iceberg tables can get written to a lot, lets catch up on any new files
-    var newFiles = resolveFiles(tableName).toSet -- candidates
+    var newFiles = resolveFiles(table).toSet -- candidates
     while (newFiles.size > 0) {
       candidates ++= newFiles
       filesRDD = sc.parallelize(newFiles.toSeq)
@@ -107,9 +112,20 @@ class IcebergTableCleaner(spark: SparkSession) {
     }
     toRemove.result()
   }
-  def cleanTable(tableName: String): Unit = {
 
+  def cleanTable(tableName: String): Unit = {
+    val table = tableForName(tableName)
+    cleanTable(table)
   }
+
+  def cleanTable(table: Table): Unit = {
+    val filesToRemoveAndStatus = selectFilesForRemoval(table)
+    val filesToRemove = filesToRemoveAndStatus.map(_._1)
+    val op = table.newDelete()
+    filesToRemove.foreach(op.deleteFile(_))
+    op.commit()
+  }
+
 }
 
 /**
