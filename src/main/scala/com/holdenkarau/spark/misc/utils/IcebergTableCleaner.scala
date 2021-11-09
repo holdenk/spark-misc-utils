@@ -33,55 +33,77 @@ class IcebergTableCleaner(spark: SparkSession) {
     table.newScan.planFiles.asScala.map(_.file()).toSeq
   }
 
-  def isValid(bcastConf: Broadcast[HadoopConf], file: DataFile): Boolean = {
+  def validate(bcastConf: Broadcast[HadoopConf], file: DataFile): Option[(DataFile, String)] = {
     val hadoopConf = bcastConf.value
     val path = new Path(String.valueOf(file.path()))
     val fs = path.getFileSystem(hadoopConf)
     if (!fs.exists(path)) {
-      false
+      Some((file, f"${file.path()} not found"))
     } else {
       try {
+        val expectedRecords = file.recordCount()
+        // todo - check and see if num records match
         // ok file exists lets try and see if it's a valid file for the type
         file.format() match {
           case FileFormat.ORC =>
             val reader = OrcFile.createReader(path, OrcFile.readerOptions(hadoopConf))
             val rowReader = reader.rows()
             val numRows = reader.getNumberOfRows()
+            if (numRows != expectedRecords) {
+              Some((file, f"file ${numRows} did not match expected ${expectedRecords}"))
+            } else {
+              None
+            }
           case FileFormat.AVRO =>
             val inStream = new BufferedInputStream(fs.open(path));
             val reader = new DataFileStream(inStream, new GenericDatumReader());
             val schema = reader.getSchema()
+            var numRows = 0
             while (reader.hasNext()) {
+              numRows += 1
               reader.next()
+            }
+
+            if (numRows != expectedRecords) {
+              Some((file, f"file ${numRows} did not match expected ${expectedRecords}"))
+            } else {
+              None
             }
           case FileFormat.PARQUET =>
             val reader = ParquetFileReader.open(hadoopConf, path)
             val meta = reader.getFileMetaData()
+            val numRows = reader.getRecordCount()
+            if (numRows != expectedRecords) {
+              Some((file, f"file ${numRows} did not match expected ${expectedRecords}"))
+            } else {
+              None
+            }
           case _ =>
             // We don't have any fancy checks for this type.
+            None
         }
-        true
       } catch {
-        case e: Exception => false
+        case e: Exception =>
+          Some((file, f"Exception loading data ${e}"))
       }
     }
   }
 
 
-  def selectFilesForRemoval(tableName: String): Seq[DataFile] = {
+  def selectFilesForRemoval(tableName: String): Seq[(DataFile, String)] = {
     val sc = spark.sparkContext
     var candidates = resolveFiles(tableName).toSet
     var filesRDD = sc.parallelize(candidates.toSeq)
     val hadoopConf = sc.hadoopConfiguration
     val bcastConf = sc.broadcast(hadoopConf)
-    val toRemove = ArrayBuilder.make[DataFile]
-    toRemove ++= (filesRDD.filter { f => isValid(bcastConf, f) }.collect())
+    val toRemove = ArrayBuilder.make[(DataFile, String)]
+    toRemove ++= (filesRDD.flatMap { f => validate(bcastConf, f) }.collect())
     // Iceberg tables can get written to a lot, lets catch up on any new files
     var newFiles = resolveFiles(tableName).toSet -- candidates
     while (newFiles.size > 0) {
       candidates ++= newFiles
       filesRDD = sc.parallelize(newFiles.toSeq)
-      toRemove ++= (filesRDD.filter { f => isValid(bcastConf, f) }.collect())
+      toRemove ++= (filesRDD.flatMap { f => validate(bcastConf, f) }.collect())
     }
     toRemove.result()
   }
