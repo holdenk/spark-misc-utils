@@ -12,6 +12,7 @@ import java.nio.file.{Files, Paths}
 import org.apache.iceberg.DataFiles
 
 
+// TODO: Make this suite work with Spark 2.X
 class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Checkers {
 
   val warehouse = Files.createTempDirectory("iceberg-test")
@@ -29,10 +30,16 @@ class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Che
   }
   // Makes the initial table, returns false so we can skip if iceberg can't be loaded.
   def makeInitialTable(sparkSession: SparkSession, tblName: String): Boolean = {
+    // We use iceberg extensions for the tests, they don't really work all the way pre-3
+    if (sparkSession.version < "3.0.0") {
+      return false
+    }
     try {
       sparkSession.sql(s"CREATE TABLE ${tblName} (id bigint, data string) USING iceberg")
     } catch {
       case e: java.lang.ClassNotFoundException => false
+      //Spark 2.X errors since extensions don't support USING in default catalog
+      case e: org.apache.spark.sql.AnalysisException => false
     }
     true
   }
@@ -45,7 +52,7 @@ class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Che
     val tblName = "hadoop.empty"
     val session = makeSession()
     assume(makeInitialTable(session, tblName))
-    val cleaner = new IcebergTableCleaner(session, "hadoop")
+    val cleaner = new IcebergTableCleaner(session)
     assert(session.read.format("iceberg").load(s"${tblName}.files").count() === 0)
     val tbl = cleaner.tableForName("hadoop", "empty")
     assert(cleaner.resolveFiles(tbl).isEmpty)
@@ -63,7 +70,7 @@ class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Che
     session.sql(s"INSERT INTO ${tblName} VALUES (1, 'a'), (2, 'b'), (3, 'c')")
     val filesAfterInsert = session.read.format("iceberg").load(s"${tblName}.files").count()
     assert(filesAfterInsert > 0)
-    val cleaner = new IcebergTableCleaner(session, meta)
+    val cleaner = new IcebergTableCleaner(session)
     val tbl = cleaner.tableForName(meta, t)
     assert(!cleaner.resolveFiles(tbl).isEmpty)
     assert(cleaner.selectFilesForRemoval(tbl).isEmpty)
@@ -83,7 +90,7 @@ class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Che
     val filesAfterInsert = session.read.format("iceberg").load(s"${tblName}.files").count()
     assert(filesAfterInsert > 0)
     // create the not valid entry in the table.
-    val cleaner = new IcebergTableCleaner(session, meta)
+    val cleaner = new IcebergTableCleaner(session)
     val tbl = cleaner.tableForName(meta, t)
     // Add a junk entry to the table
     val badDataFile = DataFiles.builder(tbl.spec())
@@ -113,7 +120,7 @@ class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Che
     val filesAfterInsert = session.read.format("iceberg").load(s"${tblName}.files").count()
     assert(filesAfterInsert > 0)
     // create the not valid entry in the table.
-    val cleaner = new IcebergTableCleaner(session, meta)
+    val cleaner = new IcebergTableCleaner(session)
     val tbl = cleaner.tableForName(meta, t)
     // Create the junk file
     val badPath = warehouse.resolve(s"./${t}/data/bad.parquet")
@@ -148,7 +155,7 @@ class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Che
     val filesAfterInsert = session.read.format("iceberg").load(s"${tblName}.files").count()
     assert(filesAfterInsert > 0)
     // create the not valid entry in the table.
-    val cleaner = new IcebergTableCleaner(session, meta)
+    val cleaner = new IcebergTableCleaner(session)
     val tbl = cleaner.tableForName(meta, t)
     // Add a junk entry to the table - make sure its in a new path since
     // Iceberg doesn't seem to support two entries to the same path.

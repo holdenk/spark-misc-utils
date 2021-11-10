@@ -29,7 +29,7 @@ lazy val core = (project in file("."))
       if (sparkVersion.value > "3.0.0") {
         Seq("org.apache.iceberg" % "iceberg-spark3-runtime" % "0.12.0")
       } else {
-        Seq()
+        Seq("org.apache.iceberg" % "iceberg-spark-runtime" % "0.12.0")
       }
     },
     // Pin back Jackson for Spark

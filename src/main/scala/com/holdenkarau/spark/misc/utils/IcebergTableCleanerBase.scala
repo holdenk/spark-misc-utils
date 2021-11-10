@@ -7,34 +7,18 @@ import collection.mutable.{ArrayBuilder, HashSet}
 
 import org.apache.avro.file.DataFileStream
 import org.apache.avro.generic.GenericDatumReader
-import org.apache.hadoop.conf.{Configuration => HadoopConf}
 import org.apache.hadoop.fs._
-import org.apache.iceberg.BaseMetastoreCatalog
-import org.apache.iceberg.hadoop.HadoopCatalog
-import org.apache.iceberg.hive.HiveCatalog
-import org.apache.iceberg.spark.SparkCatalog
 import org.apache.iceberg._
-import org.apache.iceberg.catalog._
 import org.apache.orc.OrcFile
 import org.apache.parquet.hadoop.ParquetFileReader
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql._
-import org.apache.spark.sql.connector.catalog.Identifier
-import org.apache.spark.util.SerializableConfiguration
-
 
 /**
  * Class so we can test our functions
  */
-class IcebergTableCleaner(spark: SparkSession, catalogName: String) {
+class IcebergTableCleanerBase(spark: SparkSession) {
   val sc = spark.sparkContext
-
-  def tableForName(catalogName: String, tableName: String): Table = {
-    val catalog = spark.sessionState.catalogManager.catalog(catalogName).asInstanceOf[SparkCatalog]
-    val parts = tableName.split("\\.")
-    val name = Identifier.of(parts.init.toArray, parts.last)
-    catalog.loadTable(name).table()
-  }
 
   def resolveFiles(table: Table): Seq[DataFile] = {
     table.newScan.planFiles.asScala.map(_.file()).toSeq
@@ -50,17 +34,12 @@ class IcebergTableCleaner(spark: SparkSession, catalogName: String) {
     while (newFiles.size > 0) {
       candidateFiles ++= newFiles.map { f => (f.path.toString, f.recordCount()) }
       val filesRDD = sc.parallelize(newFiles.toSeq)
-      toRemove ++= (filesRDD.flatMap { f => IcebergTableCleaner.validate(bcastConf, f) }.collect())
+      toRemove ++= (filesRDD.flatMap { f => IcebergTableCleanerBase.validate(bcastConf, f) }.collect())
       newFiles = resolveFiles(table).filter {
         f => !candidateFiles.contains((f.path.toString, f.recordCount()))
       }
     }
     toRemove.result()
-  }
-
-  def cleanTable(catalogName: String, tableName: String): Unit = {
-    val table = tableForName(catalogName, tableName)
-    cleanTable(table)
   }
 
   def cleanTable(table: Table): Unit = {
@@ -76,7 +55,7 @@ class IcebergTableCleaner(spark: SparkSession, catalogName: String) {
 /**
  * Entry point for Spark Submit etc.
  */
-object IcebergTableCleaner {
+object IcebergTableCleanerBase {
   def validate(bcastConf: Broadcast[SerializableConfiguration], file: DataFile): Option[(DataFile, String)] = {
     val hadoopConf = bcastConf.value.value
     val path = new Path(String.valueOf(file.path()))
@@ -131,9 +110,5 @@ object IcebergTableCleaner {
           Some((file, f"Exception ${e} loading datafile"))
       }
     }
-  }
-
-  def main(args: Array[String]): Unit = {
-
   }
 }
