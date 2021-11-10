@@ -3,44 +3,80 @@ package com.holdenkarau.spark.misc.utils
 import java.io.BufferedInputStream
 
 import collection.JavaConverters._
-import collection.mutable.ArrayBuilder
+import collection.mutable.{ArrayBuilder, HashSet}
 
 import org.apache.avro.file.DataFileStream
 import org.apache.avro.generic.GenericDatumReader
 import org.apache.hadoop.conf.{Configuration => HadoopConf}
 import org.apache.hadoop.fs._
+import org.apache.iceberg.BaseMetastoreCatalog
+import org.apache.iceberg.hadoop.HadoopCatalog
 import org.apache.iceberg.hive.HiveCatalog
+import org.apache.iceberg.spark.SparkCatalog
 import org.apache.iceberg._
-import org.apache.iceberg.catalog.TableIdentifier
+import org.apache.iceberg.catalog._
 import org.apache.orc.OrcFile
 import org.apache.parquet.hadoop.ParquetFileReader
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql._
+import org.apache.spark.sql.connector.catalog.Identifier
+import org.apache.spark.util.SerializableConfiguration
+
 
 /**
  * Class so we can test our functions
  */
-class IcebergTableCleaner(spark: SparkSession) {
+class IcebergTableCleaner(spark: SparkSession, catalogName: String) {
   val sc = spark.sparkContext
 
-  val catalog = {
-    val conf = sc.hadoopConfiguration
-    val catalog = new HiveCatalog()
-    catalog.setConf(conf)
-    catalog
-  }
-
-  private def tableForName(tableName: String): Table = {
-    val name = TableIdentifier.parse(tableName)
-    catalog.loadTable(name)
+  def tableForName(catalogName: String, tableName: String): Table = {
+    val catalog = spark.sessionState.catalogManager.catalog(catalogName).asInstanceOf[SparkCatalog]
+    val parts = tableName.split("\\.")
+    val name = Identifier.of(parts.init.toArray, parts.last)
+    catalog.loadTable(name).table()
   }
 
   def resolveFiles(table: Table): Seq[DataFile] = {
     table.newScan.planFiles.asScala.map(_.file()).toSeq
   }
 
-  def validate(bcastConf: Broadcast[HadoopConf], file: DataFile): Option[(DataFile, String)] = {
-    val hadoopConf = bcastConf.value
+  def selectFilesForRemoval(table: Table): Seq[(DataFile, String)] = {
+    var candidateFiles = HashSet[String]()
+    val hadoopConf = sc.hadoopConfiguration
+    val bcastConf = sc.broadcast(new SerializableConfiguration(hadoopConf))
+    val toRemove = ArrayBuilder.make[(DataFile, String)]
+    // Iceberg tables can get written to a lot, lets catch up on any new files
+    var newFiles = resolveFiles(table).filter(f => !candidateFiles.contains(f.path.toString ))
+    while (newFiles.size > 0) {
+      candidateFiles ++= newFiles.map(_.path.toString)
+      val filesRDD = sc.parallelize(newFiles.toSeq)
+      toRemove ++= (filesRDD.flatMap { f => IcebergTableCleaner.validate(bcastConf, f) }.collect())
+      newFiles = resolveFiles(table).filter(f => !candidateFiles.contains(f.path.toString))
+    }
+    toRemove.result()
+  }
+
+  def cleanTable(catalogName: String, tableName: String): Unit = {
+    val table = tableForName(catalogName, tableName)
+    cleanTable(table)
+  }
+
+  def cleanTable(table: Table): Unit = {
+    val filesToRemoveAndStatus = selectFilesForRemoval(table)
+    val filesToRemove = filesToRemoveAndStatus.map(_._1)
+    val op = table.newDelete()
+    filesToRemove.foreach(op.deleteFile(_))
+    op.commit()
+  }
+
+}
+
+/**
+ * Entry point for Spark Submit etc.
+ */
+object IcebergTableCleaner {
+  def validate(bcastConf: Broadcast[SerializableConfiguration], file: DataFile): Option[(DataFile, String)] = {
+    val hadoopConf = bcastConf.value.value
     val path = new Path(String.valueOf(file.path()))
     val fs = path.getFileSystem(hadoopConf)
     if (!fs.exists(path)) {
@@ -95,43 +131,6 @@ class IcebergTableCleaner(spark: SparkSession) {
     }
   }
 
-
-  def selectFilesForRemoval(table: Table): Seq[(DataFile, String)] = {
-    var candidates = resolveFiles(table).toSet
-    var filesRDD = sc.parallelize(candidates.toSeq)
-    val hadoopConf = sc.hadoopConfiguration
-    val bcastConf = sc.broadcast(hadoopConf)
-    val toRemove = ArrayBuilder.make[(DataFile, String)]
-    toRemove ++= (filesRDD.flatMap { f => validate(bcastConf, f) }.collect())
-    // Iceberg tables can get written to a lot, lets catch up on any new files
-    var newFiles = resolveFiles(table).toSet -- candidates
-    while (newFiles.size > 0) {
-      candidates ++= newFiles
-      filesRDD = sc.parallelize(newFiles.toSeq)
-      toRemove ++= (filesRDD.flatMap { f => validate(bcastConf, f) }.collect())
-    }
-    toRemove.result()
-  }
-
-  def cleanTable(tableName: String): Unit = {
-    val table = tableForName(tableName)
-    cleanTable(table)
-  }
-
-  def cleanTable(table: Table): Unit = {
-    val filesToRemoveAndStatus = selectFilesForRemoval(table)
-    val filesToRemove = filesToRemoveAndStatus.map(_._1)
-    val op = table.newDelete()
-    filesToRemove.foreach(op.deleteFile(_))
-    op.commit()
-  }
-
-}
-
-/**
- * Entry point for Spark Submit etc.
- */
-object IcebergTableCleaner {
   def main(args: Array[String]): Unit = {
 
   }
