@@ -26,7 +26,7 @@ lazy val core = (project in file("."))
       }
     },
     libraryDependencies ++= {
-      if (sparkVersion.value > "3.0.0") {
+      if (sparkVersion.value >= "3.0.0") {
         Seq("org.apache.iceberg" % "iceberg-spark3-runtime" % "0.12.0")
       } else {
         Seq("org.apache.iceberg" % "iceberg-spark-runtime" % "0.12.0")
