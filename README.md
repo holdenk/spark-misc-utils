@@ -10,3 +10,5 @@ If you have sparse data which when Spark goes to serialize blows up, one option 
 Apache Iceberg does not generally perform validation of the files that it's metadata points to. This is not a problem when all clients of a table are well behaved (e.g. the standard clients), but sometimes custom clients or errors can occur. In that case you may get errors like `File does not exist.`. The Apache Iceberg Bad File Table Cleanup tool can be used to drop these invalid entries from the metadata.
 
 At present the tool only checks that the files exist and are loadable, but PRs are welcome for things like schema validation.
+
+As per usual see the test suite, `IcebergTableCleanerSuite.scala`, for sample usage.
