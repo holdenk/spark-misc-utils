@@ -41,17 +41,19 @@ class IcebergTableCleaner(spark: SparkSession, catalogName: String) {
   }
 
   def selectFilesForRemoval(table: Table): Seq[(DataFile, String)] = {
-    var candidateFiles = HashSet[String]()
+    var candidateFiles = HashSet[(String, Long)]()
     val hadoopConf = sc.hadoopConfiguration
     val bcastConf = sc.broadcast(new SerializableConfiguration(hadoopConf))
     val toRemove = ArrayBuilder.make[(DataFile, String)]
     // Iceberg tables can get written to a lot, lets catch up on any new files
-    var newFiles = resolveFiles(table).filter(f => !candidateFiles.contains(f.path.toString ))
+    var newFiles = resolveFiles(table)
     while (newFiles.size > 0) {
-      candidateFiles ++= newFiles.map(_.path.toString)
+      candidateFiles ++= newFiles.map { f => (f.path.toString, f.recordCount()) }
       val filesRDD = sc.parallelize(newFiles.toSeq)
       toRemove ++= (filesRDD.flatMap { f => IcebergTableCleaner.validate(bcastConf, f) }.collect())
-      newFiles = resolveFiles(table).filter(f => !candidateFiles.contains(f.path.toString))
+      newFiles = resolveFiles(table).filter {
+        f => !candidateFiles.contains((f.path.toString, f.recordCount()))
+      }
     }
     toRemove.result()
   }
@@ -92,7 +94,7 @@ object IcebergTableCleaner {
             val rowReader = reader.rows()
             val numRows = reader.getNumberOfRows()
             if (numRows != expectedRecords) {
-              Some((file, f"file ${numRows} did not match expected ${expectedRecords}"))
+              Some((file, f"file row count ${numRows} did not match expected ${expectedRecords}"))
             } else {
               None
             }

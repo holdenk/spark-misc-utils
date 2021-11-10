@@ -7,7 +7,8 @@ import org.scalacheck.Prop.forAll
 import org.scalatest.FunSuite
 import org.scalatest.prop.Checkers
 import org.apache.spark.sql._
-import java.nio.file.Files
+import java.io.File
+import java.nio.file.{Files, Paths}
 import org.apache.iceberg.DataFiles
 
 
@@ -100,9 +101,9 @@ class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Che
     assert(session.read.format("iceberg").load(s"${tblName}.files").count() === filesAfterInsert)
   }
 
-  test("Partially valid table test - invalid file") {
+  test("Partially valid table test - invalid file format") {
     val meta = "hadoop"
-    val t = "invalidFile"
+    val t = "invalidFileFormat"
     val tblName = s"${meta}.${t}"
     val session = makeSession()
     // create the valid table
@@ -135,4 +136,40 @@ class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Che
     assert(session.read.format("iceberg").load(s"${tblName}.files").count() === filesAfterInsert)
   }
   // Next up test wrong record count
+  test("Partially valid table test - invalid record count file") {
+    val meta = "hadoop"
+    val t = "invalidFileRecordCount"
+    val tblName = s"${meta}.${t}"
+    val session = makeSession()
+    // create the valid table
+    assume(makeInitialTable(session, tblName))
+    assert(session.read.format("iceberg").load(s"${tblName}.files").count() === 0)
+    session.sql(s"INSERT INTO ${tblName} VALUES (1, 'a'), (2, 'b'), (3, 'c')")
+    val filesAfterInsert = session.read.format("iceberg").load(s"${tblName}.files").count()
+    assert(filesAfterInsert > 0)
+    // create the not valid entry in the table.
+    val cleaner = new IcebergTableCleaner(session, meta)
+    val tbl = cleaner.tableForName(meta, t)
+    // Add a junk entry to the table - make sure its in a new path since
+    // Iceberg doesn't seem to support two entries to the same path.
+    val oldFile = cleaner.resolveFiles(tbl)(0)
+    val oldFilePath = Paths.get(oldFile.path.toString)
+    val badFilePath = warehouse.resolve(s"./${t}/data/bad.parquet")
+    Files.copy(oldFilePath, badFilePath)
+    val badDataFile = DataFiles.builder(tbl.spec())
+        .copy(oldFile)
+        .withPath(badFilePath.toString)
+        .withRecordCount(1000)
+        .build();
+    tbl.newAppend().appendFile(badDataFile).commit()
+    // Assert that our junk entry shows up.
+    assert(session.read.format("iceberg").load(s"${tblName}.files").count() > filesAfterInsert)
+    // Assert various things about the cleaner
+    assert(!cleaner.resolveFiles(tbl).isEmpty)
+    val filesToRemove = cleaner.selectFilesForRemoval(tbl)
+    assert(filesToRemove.size === 1)
+    assert(filesToRemove(0)._2 contains "did not match expected 1000")
+    cleaner.cleanTable(tbl)
+    assert(session.read.format("iceberg").load(s"${tblName}.files").count() === filesAfterInsert)
+  }
 }
