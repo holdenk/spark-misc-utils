@@ -57,4 +57,9 @@ case class CompressedArrayEncoder(child: Expression) extends UnaryExpression
   }
 
   override def dataType: DataType = BinaryType
+
+  // New in 3.2
+  def withNewChildInternal(newChild: Expression) = {
+    copy(child = newChild)
+  }
 }

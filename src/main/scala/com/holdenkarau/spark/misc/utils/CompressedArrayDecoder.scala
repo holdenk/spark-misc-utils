@@ -71,4 +71,9 @@ case class CompressedArrayDecoder(child: Expression) extends UnaryExpression
   }
 
   override def dataType: DataType = ObjectType(classOf[Array[Byte]])
+
+  // New in 3.2
+  def withNewChildInternal(newChild: Expression) = {
+    copy(child = newChild)
+  }
 }
