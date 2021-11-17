@@ -20,7 +20,7 @@ lazy val core = (project in file("."))
     ),
     libraryDependencies ++= {
       if (scalaVersion.value > "2.12.0") {
-        Seq("com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_1.1.0" % "test")
+        Seq("com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_1.1.1" % "test")
       } else {
         Seq()
       }
