@@ -66,7 +66,7 @@ val coreSources = unmanagedSourceDirectories in Compile  := {
 val commonSettings = Seq(
   organization := "com.holdenkarau",
   publishMavenStyle := true,
-  sparkUtilsVersion := "0.0.1",
+  sparkUtilsVersion := "0.0.2",
   sparkVersion := System.getProperty("sparkVersion", "2.4.4"),
   version := sparkVersion.value + "_" + sparkUtilsVersion.value,
   scalaVersion := {
