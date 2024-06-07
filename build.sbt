@@ -20,7 +20,7 @@ lazy val core = (project in file("."))
     ),
     libraryDependencies ++= {
       if (scalaVersion.value > "2.12.0") {
-        Seq("com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_1.1.1" % "test")
+        Seq("com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_1.5.3" % "test")
       } else {
         Seq()
       }
@@ -67,7 +67,7 @@ val commonSettings = Seq(
   organization := "com.holdenkarau",
   publishMavenStyle := true,
   sparkUtilsVersion := "0.0.2",
-  sparkVersion := System.getProperty("sparkVersion", "2.4.4"),
+  sparkVersion := System.getProperty("sparkVersion", "3.5.1"),
   version := sparkVersion.value + "_" + sparkUtilsVersion.value,
   scalaVersion := {
     "2.12.12"

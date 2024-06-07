@@ -1,14 +1,13 @@
 package com.holdenkarau.spark.misc.utils
 
 import com.holdenkarau.spark.testing._
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import org.scalacheck.Arbitrary
 import org.scalacheck.Prop.forAll
-import org.scalatest.FunSuite
-import org.scalatest.prop.Checkers
+import org.scalatestplus.scalacheck.Checkers
 import org.apache.spark.sql._
 
-class AltEncoderSuite extends FunSuite with SharedSparkContext with Checkers {
+class AltEncoderSuite extends AnyFunSuite with SharedSparkContext with Checkers {
   test("Simple test") {
     val sqlContext = SparkSession.builder.getOrCreate().sqlContext
 

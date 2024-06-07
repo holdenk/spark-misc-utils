@@ -1,11 +1,10 @@
 package com.holdenkarau.spark.misc.utils
 
 import com.holdenkarau.spark.testing._
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import org.scalacheck.Arbitrary
 import org.scalacheck.Prop.forAll
-import org.scalatest.FunSuite
-import org.scalatest.prop.Checkers
+import org.scalatestplus.scalacheck.Checkers
 import org.apache.spark.sql._
 import java.io.File
 import java.nio.file.{Files, Paths}
@@ -13,7 +12,7 @@ import org.apache.iceberg.DataFiles
 
 
 // TODO: Make this suite work with Spark 2.X
-class IcebergTableCleanerSuite extends FunSuite with SharedSparkContext with Checkers {
+class IcebergTableCleanerSuite extends AnyFunSuite with SharedSparkContext with Checkers {
 
   val warehouse = Files.createTempDirectory("iceberg-test")
 
