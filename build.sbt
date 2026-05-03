@@ -20,13 +20,15 @@ lazy val core = (project in file("."))
     ),
     libraryDependencies ++= {
       if (scalaVersion.value > "2.12.0") {
-        Seq("com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_1.5.3" % "test")
+        Seq("com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_2.1.3" % "test")
       } else {
         Seq()
       }
     },
     libraryDependencies ++= {
-      if (sparkVersion.value >= "3.0.0") {
+      if (sparkVersion.value >= "4.0.0") {
+        Seq("org.apache.iceberg" % "iceberg-spark4-runtime" % "1.10.0")
+      } else if (sparkVersion.value >= "3.0.0") {
         Seq("org.apache.iceberg" % "iceberg-spark3-runtime" % "0.12.0")
       } else {
         Seq("org.apache.iceberg" % "iceberg-spark-runtime" % "0.12.0")
@@ -70,10 +72,16 @@ val commonSettings = Seq(
   sparkVersion := System.getProperty("sparkVersion", "3.5.1"),
   version := sparkVersion.value + "_" + sparkUtilsVersion.value,
   scalaVersion := {
-    "2.12.12"
+    if (sparkVersion.value >= "4.0.0") {
+      "2.13.17"
+    } else {
+      "2.12.12"
+    }
   },
   crossScalaVersions := {
-    if (sparkVersion.value >= "3.0.0") {
+    if (sparkVersion.value >= "4.0.0") {
+      Seq("2.13.17")
+    } else if (sparkVersion.value >= "3.0.0") {
       Seq("2.12.12")
     } else {
       Seq("2.12.12", "2.11.11")
