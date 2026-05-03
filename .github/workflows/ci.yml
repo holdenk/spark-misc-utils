@@ -53,4 +53,4 @@ jobs:
           ~/.cache/coursier
         key: ${{ runner.os }}-${{ matrix.java-version }}-${{ matrix.spark }}-build-${{ env.cache-name }}-${{ hashFiles('build.sbt') }}
     - name: Build and Test
-      run:   sbt  -DsparkVersion=${{ matrix.spark_version }} version clean test
+      run:   sbt  -DsparkVersion=${{ matrix.spark }} version clean test
