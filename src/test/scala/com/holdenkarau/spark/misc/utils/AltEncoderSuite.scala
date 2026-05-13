@@ -30,7 +30,7 @@ class AltEncoderSuite extends AnyFunSuite with SharedSparkContext with Checkers 
 
     val ds = sqlContext.createDataset[Array[Byte]](List(Array[Byte](1)))
     ds.repartition(10)
-    assert(ds.map(_ == null).count == 1)
+    assert(ds.filter(_ == null).count == 0)
   }
 
 

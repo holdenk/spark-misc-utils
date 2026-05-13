@@ -65,41 +65,51 @@ object IcebergTableCleanerBase {
     } else {
       try {
         val expectedRecords = file.recordCount()
-        // todo - check and see if num records match
-        // ok file exists lets try and see if it's a valid file for the type
         file.format() match {
           case FileFormat.ORC =>
             val reader = OrcFile.createReader(path, OrcFile.readerOptions(hadoopConf))
-            val rowReader = reader.rows()
-            val numRows = reader.getNumberOfRows()
-            if (numRows != expectedRecords) {
-              Some((file, f"file row count ${numRows} did not match expected ${expectedRecords}"))
-            } else {
-              None
+            try {
+              val numRows = reader.getNumberOfRows()
+              if (numRows != expectedRecords) {
+                Some((file, f"file row count ${numRows} did not match expected ${expectedRecords}"))
+              } else {
+                None
+              }
+            } finally {
+              reader.close()
             }
           case FileFormat.AVRO =>
-            val inStream = new BufferedInputStream(fs.open(path));
-            val reader = new DataFileStream(inStream, new GenericDatumReader());
-            val schema = reader.getSchema()
-            var numRows = 0
-            while (reader.hasNext()) {
-              numRows += 1
-              reader.next()
-            }
-
-            if (numRows != expectedRecords) {
-              Some((file, f"file ${numRows} did not match expected ${expectedRecords}"))
-            } else {
-              None
+            val inStream = new BufferedInputStream(fs.open(path))
+            try {
+              val reader = new DataFileStream(inStream, new GenericDatumReader())
+              try {
+                var numRows = 0
+                while (reader.hasNext()) {
+                  numRows += 1
+                  reader.next()
+                }
+                if (numRows != expectedRecords) {
+                  Some((file, f"file ${numRows} did not match expected ${expectedRecords}"))
+                } else {
+                  None
+                }
+              } finally {
+                reader.close()
+              }
+            } finally {
+              inStream.close()
             }
           case FileFormat.PARQUET =>
             val reader = ParquetFileReader.open(hadoopConf, path)
-            val meta = reader.getFileMetaData()
-            val numRows = reader.getRecordCount()
-            if (numRows != expectedRecords) {
-              Some((file, f"file ${numRows} did not match expected ${expectedRecords}"))
-            } else {
-              None
+            try {
+              val numRows = reader.getRecordCount()
+              if (numRows != expectedRecords) {
+                Some((file, f"file ${numRows} did not match expected ${expectedRecords}"))
+              } else {
+                None
+              }
+            } finally {
+              reader.close()
             }
           case _ =>
             // We don't have any fancy checks for this type.

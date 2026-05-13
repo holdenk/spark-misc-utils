@@ -14,10 +14,15 @@ lazy val core = (project in file("."))
       "org.apache.spark" %% "spark-hive"        % sparkVersion.value,
       "org.apache.spark" %% "spark-catalyst"    % sparkVersion.value,
       "org.apache.spark" %% "spark-yarn"        % sparkVersion.value,
-      "org.apache.spark" %% "spark-mllib"       % sparkVersion.value,
-      "org.apache.iceberg" % "iceberg-api" % "0.12.0",
-      "org.apache.iceberg" % "iceberg-hive-metastore" % "0.12.0"
+      "org.apache.spark" %% "spark-mllib"       % sparkVersion.value
     ),
+    libraryDependencies ++= {
+      val icebergVersion = if (sparkVersion.value >= "4.0.0") "1.10.0" else "0.12.0"
+      Seq(
+        "org.apache.iceberg" % "iceberg-api" % icebergVersion,
+        "org.apache.iceberg" % "iceberg-hive-metastore" % icebergVersion
+      )
+    },
     libraryDependencies ++= {
       if (scalaVersion.value > "2.12.0") {
         Seq("com.holdenkarau" %% "spark-testing-base" %  s"${sparkVersion.value}_2.1.3" % "test")
@@ -90,11 +95,29 @@ val commonSettings = Seq(
   skip in test := {
     scalaVersion.value < "2.12.0"
   },
-  scalacOptions ++= Seq("-deprecation", "-unchecked", "-Yrangepos", "-Ywarn-unused-import"),
+  scalacOptions ++= Seq("-deprecation", "-unchecked", "-Yrangepos") ++
+    (if (scalaVersion.value >= "2.13") Seq("-Wunused:imports") else Seq("-Ywarn-unused-import")),
   javacOptions ++= {
     Seq("-source", "1.8", "-target", "1.8")
   },
-  javaOptions ++= Seq("-Xms6G", "-Xmx6G", "-XX:MaxPermSize=4048M", "-XX:+CMSClassUnloadingEnabled"),
+  javaOptions ++= Seq("-Xms6G", "-Xmx6G") ++ {
+    if (System.getProperty("java.specification.version", "1.8").startsWith("1.")) Seq()
+    else Seq(
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.net=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+      "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+      "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED"
+    )
+  },
 
   parallelExecution in Test := false,
   fork := true,

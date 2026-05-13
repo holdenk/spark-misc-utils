@@ -23,13 +23,12 @@ class LimitedCollectSetUDAFSuite extends AnyFunSuite with SharedSparkContext wit
 
     import sqlContext.implicits._
 
-    // Register the UDAF
     val limited_collect_set = functions.udaf(new LimitedCollectSetUDAF(2))
 
-
     val testDF = sqlContext.createDataFrame(testElems)
-    testDF.show()
-    testDF.select(limited_collect_set($"fav")).show()
+    val result = testDF.select(limited_collect_set($"fav")).as[List[Int]].collect()(0)
+    assert(result.size === 2)
+    assert(result.toSet.subsetOf(Set(42, 7, 420)))
   }
 
 }
